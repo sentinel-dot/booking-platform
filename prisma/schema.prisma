@@ -1,0 +1,255 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BusinessType {
+  restaurant
+  hair_salon
+  beauty_salon
+  massage
+  other
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+  no_show
+}
+
+enum UserRole {
+  owner
+  manager
+  staff
+}
+
+model User {
+  id                     Int      @id @default(autoincrement())
+  email                  String   @unique
+  passwordHash          String   @map("password_hash")
+  firstName             String   @map("first_name")
+  lastName              String   @map("last_name")
+  role                   UserRole @default(owner)
+  isActive              Boolean  @default(true) @map("is_active")
+  emailVerified         Boolean  @default(false) @map("email_verified")
+  emailVerificationToken String? @map("email_verification_token")
+  resetPasswordToken    String?  @map("reset_password_token")
+  resetPasswordExpires  DateTime? @map("reset_password_expires")
+  lastLogin             DateTime? @map("last_login")
+  loginCount            Int      @default(0) @map("login_count")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userBusinesses UserBusiness[]
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Business {
+  id                   Int          @id @default(autoincrement())
+  name                 String
+  type                 BusinessType
+  email                String       @unique
+  phone                String?
+  address              String?
+  city                 String?
+  postalCode          String?      @map("postal_code")
+  country              String       @default("DE")
+  description          String?
+  websiteUrl          String?      @map("website_url")
+  instagramHandle     String?      @map("instagram_handle")
+  bookingLinkSlug     String       @unique @map("booking_link_slug")
+  bookingAdvanceDays  Int          @default(30) @map("booking_advance_days")
+  cancellationHours   Int          @default(24) @map("cancellation_hours")
+  requirePhone        Boolean      @default(false) @map("require_phone")
+  requireDeposit      Boolean      @default(false) @map("require_deposit")
+  depositAmount       Decimal?     @map("deposit_amount") @db.Decimal(10, 2)
+  isActive            Boolean      @default(true) @map("is_active")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  userBusinesses        UserBusiness[]
+  staffMembers         StaffMember[]
+  services             Service[]
+  availabilityRules    AvailabilityRule[]
+  specialAvailability  SpecialAvailability[]
+  bookings             Booking[]
+  notifications        Notification[]
+
+  @@map("businesses")
+}
+
+model UserBusiness {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  businessId   Int      @map("business_id")
+  role         UserRole @default(owner)
+  permissions  Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@map("user_businesses")
+}
+
+model StaffMember {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @map("business_id")
+  name        String
+  email       String?
+  phone       String?
+  description String?
+  avatarUrl   String?  @map("avatar_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  business             Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffServices        StaffService[]
+  availabilityRules    AvailabilityRule[]
+  specialAvailability  SpecialAvailability[]
+  bookings             Booking[]
+
+  @@map("staff_members")
+}
+
+model Service {
+  id                   Int     @id @default(autoincrement())
+  businessId           Int     @map("business_id")
+  name                 String
+  description          String?
+  durationMinutes     Int     @map("duration_minutes")
+  price                Decimal? @db.Decimal(10, 2)
+  capacity             Int     @default(1)
+  requiresStaff       Boolean @default(false) @map("requires_staff")
+  bufferBeforeMinutes Int     @default(0) @map("buffer_before_minutes")
+  bufferAfterMinutes  Int     @default(0) @map("buffer_after_minutes")
+  isActive            Boolean @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffServices StaffService[]
+  bookings      Booking[]
+
+  @@map("services")
+}
+
+model StaffService {
+  id            Int      @id @default(autoincrement())
+  staffMemberId Int      @map("staff_member_id")
+  serviceId     Int      @map("service_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  staffMember StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([staffMemberId, serviceId])
+  @@map("staff_services")
+}
+
+model AvailabilityRule {
+  id            Int      @id @default(autoincrement())
+  businessId    Int?     @map("business_id")
+  staffMemberId Int?     @map("staff_member_id")
+  dayOfWeek     Int      @map("day_of_week") // 0=Sunday, 1=Monday, etc.
+  startTime     String   @map("start_time") // "09:00"
+  endTime       String   @map("end_time")   // "17:00"
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  business    Business?    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMember StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  @@map("availability_rules")
+}
+
+model SpecialAvailability {
+  id            Int      @id @default(autoincrement())
+  businessId    Int?     @map("business_id")
+  staffMemberId Int?     @map("staff_member_id")
+  date          DateTime @db.Date
+  startTime     String?  @map("start_time")
+  endTime       String?  @map("end_time")
+  isAvailable   Boolean  @map("is_available")
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  business    Business?    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staffMember StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  @@map("special_availability")
+}
+
+model Booking {
+  id                   Int           @id @default(autoincrement())
+  businessId           Int           @map("business_id")
+  serviceId            Int           @map("service_id")
+  staffMemberId        Int?          @map("staff_member_id")
+  customerName         String        @map("customer_name")
+  customerEmail        String        @map("customer_email")
+  customerPhone        String?       @map("customer_phone")
+  bookingDate          DateTime      @db.Date @map("booking_date")
+  startTime            String        @map("start_time")
+  endTime              String        @map("end_time")
+  partySize            Int           @default(1) @map("party_size")
+  specialRequests      String?       @map("special_requests")
+  status               BookingStatus @default(pending)
+  totalAmount          Decimal?      @map("total_amount") @db.Decimal(10, 2)
+  depositPaid          Decimal       @default(0) @map("deposit_paid") @db.Decimal(10, 2)
+  paymentStatus        String        @default("pending") @map("payment_status")
+  confirmationSentAt   DateTime?     @map("confirmation_sent_at")
+  reminderSentAt       DateTime?     @map("reminder_sent_at")
+  cancelledAt          DateTime?     @map("cancelled_at")
+  cancellationReason   String?       @map("cancellation_reason")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service     Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  staffMember StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: SetNull)
+  notifications Notification[]
+
+  @@map("bookings")
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  businessId Int      @map("business_id")
+  type      String
+  title     String
+  message   String
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  bookingId Int?      @map("booking_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  booking  Booking?  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
